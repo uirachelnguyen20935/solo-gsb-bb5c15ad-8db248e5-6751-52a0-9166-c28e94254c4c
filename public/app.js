@@ -8,6 +8,7 @@ let fragmentStale = false; // 原提示单发生增删改后，旧预览失效
 let deferPlan = null; // 当前顺延预演结果
 let deferStale = false; // 提示单发生增删改后，旧预演失效（确认时服务端也会再核对版本）
 let rehearsal = null; // 当前排练视图（GET /api/rehearsal 的 rehearsal；null 表示无进行中排练）
+let breakdown = null; // 起点偏差拆解视图（GET /api/rehearsal/breakdown；只读，服务端基于冻结计划+当前登记计算）
 let rehEditing = null; // 勘误中的单元格 { cueId, field: 'start'|'end', draft }；null 表示未在勘误
 
 const $ = (sel) => document.querySelector(sel);
@@ -54,17 +55,31 @@ async function api(method, url, body) {
 }
 
 async function reload(notice) {
-  const [cuesData, rehData] = await Promise.all([
+  const [cuesData, rehData, bkData] = await Promise.all([
     api('GET', '/api/cues'),
     api('GET', '/api/rehearsal'),
+    api('GET', '/api/rehearsal/breakdown'),
   ]);
   state = cuesData;
   rehearsal = rehData.rehearsal;
+  breakdown = bkData.breakdown; // 只读拆解：编辑原提示单不改变它（服务端只用冻结计划与当前登记）
   markFragmentStale();
   markDeferStale();
   render();
   renderRehearsal();
+  renderBreakdown();
   if (notice) showBanner(notice, 'ok');
+}
+
+// 起点偏差拆解只读：登记 / 勘误 / 重置后随当前登记刷新
+async function refreshBreakdown() {
+  try {
+    const bkData = await api('GET', '/api/rehearsal/breakdown');
+    breakdown = bkData.breakdown;
+  } catch (err) {
+    breakdown = null;
+  }
+  renderBreakdown();
 }
 
 // ---------------- 顶部提示条 ----------------
@@ -972,6 +987,139 @@ function rehActualCell(it, field) {
   return td;
 }
 
+// ---------------- 起点偏差拆解（只读，服务端计算） ----------------
+function bkSignedSpan(value) {
+  const span = el('span');
+  if (value > 1e-9) {
+    span.className = 'delta-late';
+    span.textContent = `+${fmtNum(value)}s`;
+  } else if (value < -1e-9) {
+    span.className = 'delta-early';
+    span.textContent = `-${fmtNum(-value)}s`;
+  } else {
+    span.className = 'delta-zero';
+    span.textContent = '0s';
+  }
+  return span;
+}
+
+function bkOriginLine(origin, isBinding) {
+  const li = el('li', 'bk-con' + (isBinding ? ' is-binding' : ''));
+  if (isBinding) li.append(el('span', 'bk-bind-pill', '达到 R'));
+  if (origin.type === 'fixed') {
+    li.append(document.createTextNode(`起点约束：固定第 ${fmtNum(origin.fixedAt)}s 开始`));
+  } else if (!origin.available) {
+    li.append(document.createTextNode(
+      `起点约束：前置${origin.relatedCueName ? `「${origin.relatedCueName}」` : ''}尚未登记实际结束（不可用）`
+    ));
+  } else {
+    li.append(document.createTextNode(
+      `起点约束：前置「${origin.relatedCueName || origin.relatedCueId}」实际结束 ${fmtNum(origin.relatedActualEnd)}s` +
+      ` + 延迟 ${fmtNum(origin.delayAfter)}s = ${fmtNum(origin.value)}s`
+    ));
+  }
+  return li;
+}
+
+function bkChannelLine(item, isBinding) {
+  const ch = item.channelConstraint;
+  const li = el('li', 'bk-con' + (isBinding ? ' is-binding' : ''));
+  if (isBinding) li.append(el('span', 'bk-bind-pill', '达到 R'));
+  if (!ch.blockers.length) {
+    li.append(document.createTextNode('通道约束：同通道无实际结束不晚于 A 的提示（取 0s）'));
+    return li;
+  }
+  const top = ch.blockers.filter((b) => b.attainsMax);
+  const others = ch.blockers.length - top.length;
+  li.append(document.createTextNode(
+    `通道约束：同通道其他提示实际结束不晚于 A 的最大值 ${fmtNum(ch.value)}s`
+  ));
+  const sub = el('ul', 'bk-blockers');
+  for (const b of top) {
+    sub.append(el('li', null, `「${b.name}」实际结束 ${fmtNum(b.actualEnd)}s`));
+  }
+  if (others > 0) {
+    sub.append(el('li', 'rel-muted', `另有 ${others} 条早于该值（未达到 R，不计为并列阻塞）`));
+  }
+  li.append(sub);
+  return li;
+}
+
+function renderBreakdown() {
+  const empty = $('#bkEmpty');
+  const tbody = $('#bkTbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!breakdown) {
+    empty.hidden = true;
+    return;
+  }
+
+  empty.hidden = breakdown.counts.analyzed > 0;
+
+  breakdown.items.forEach((it, i) => {
+    const tr = el('tr');
+    if (!it.analyzed) tr.classList.add('row-bk-pending');
+    else if (it.status === 'running') tr.classList.add('row-running');
+
+    tr.append(el('td', 'num', String(i + 1)));
+    tr.append(el('td', 'name-cell', it.name));
+    tr.append(el('td', null, it.channel));
+    const st = REH_STATUS[it.status];
+    const statusTd = el('td');
+    statusTd.append(el('span', `pill ${st.cls}`, st.text));
+    tr.append(statusTd);
+
+    tr.append(el('td', 'num', fmtNum(it.plannedStart)));
+
+    if (!it.analyzed) {
+      // 未开始提示：只标为未分析，不计算 R 与分解
+      tr.append(el('td', 'num', '—'));
+      tr.append(el('td', 'num', '—'));
+      const na = el('td');
+      na.append(el('span', 'pill unknown', '未分析（尚未登记实际开始）'));
+      tr.append(na);
+      tr.append(el('td', 'num', '—'));
+      tr.append(el('td', 'num', '—'));
+      tr.append(el('td', 'num', '—'));
+      tbody.append(tr);
+      return;
+    }
+
+    tr.append(el('td', 'num', fmtNum(it.actualStart)));
+    tr.append(el('td', 'num bk-ready', fmtNum(it.readyAt)));
+
+    const consTd = el('td');
+    const ul = el('ul', 'bk-cons');
+    const originBinding = it.binding.includes('origin');
+    const channelBinding = it.binding.includes('channel');
+    ul.append(bkOriginLine(it.origin, originBinding));
+    ul.append(bkChannelLine(it, channelBinding));
+    consTd.append(ul);
+    tr.append(consTd);
+
+    // 分解等式：约束位移 + 额外等待 = 总偏差（服务端按 3 位小数计算，严格满足）
+    const eqTitle =
+      `约束位移 ${fmtNum(it.constraintShift)}s + 额外等待 ${fmtNum(it.extraWait)}s` +
+      ` = 总偏差 ${fmtNum(it.totalDelta)}s`;
+    const shiftTd = el('td', 'num');
+    const shiftSpan = bkSignedSpan(it.constraintShift);
+    shiftSpan.title = 'R−P：就绪时刻相对计划开始的位移（前置实际更早时可为负）';
+    shiftTd.append(shiftSpan);
+    const waitTd = el('td', 'num');
+    const waitSpan = bkSignedSpan(it.extraWait);
+    waitSpan.title = 'A−R：就绪后到实际开始的额外等待';
+    waitTd.append(waitSpan);
+    const totalTd = el('td', 'num');
+    const totalSpan = bkSignedSpan(it.totalDelta);
+    totalSpan.title = eqTitle;
+    totalTd.append(totalSpan);
+    tr.append(shiftTd, waitTd, totalTd);
+
+    tbody.append(tr);
+  });
+}
+
 function renderRehearsal() {
   const idle = $('#rehIdle');
   const active = $('#rehActive');
@@ -979,6 +1127,8 @@ function renderRehearsal() {
     rehEditing = null;
     idle.hidden = false;
     active.hidden = true;
+    breakdown = null;
+    renderBreakdown();
     return;
   }
   idle.hidden = true;
@@ -1049,6 +1199,7 @@ async function startRehearsal() {
     rehEditing = null;
     hideRehError();
     renderRehearsal();
+    await refreshBreakdown();
     showBanner('已开始排练：当前提示单与重算计划已冻结', 'ok');
   } catch (err) {
     showRehError(err.errors || [err.message]);
@@ -1069,6 +1220,7 @@ async function rehearsalRecord(kind, cueId) {
     rehEditing = null; // 记录已变化，进行中的勘误草稿作废
     hideRehError();
     renderRehearsal();
+    await refreshBreakdown(); // 登记后按当前记录刷新只读拆解
     showBanner(kind === 'start' ? '已登记实际开始' : '已登记实际结束', 'ok');
   } catch (err) {
     showRehError(err.errors || [err.message]);
@@ -1078,6 +1230,7 @@ async function rehearsalRecord(kind, cueId) {
       rehearsal = fresh.rehearsal;
       renderRehearsal();
     } catch (_) { /* 忽略刷新失败 */ }
+    refreshBreakdown();
   }
 }
 
@@ -1096,6 +1249,7 @@ async function correctRehearsalRecord(cueId, field, rawValue) {
     rehEditing = null;
     hideRehError();
     renderRehearsal();
+    await refreshBreakdown(); // 勘误后按全部当前记录刷新只读拆解
     showBanner('已勘误登记时间，排练视图已刷新', 'ok');
   } catch (err) {
     // 保留输入草稿便于修改后重试；同时拉取最新排练视图（记录可能已被他处改变）
@@ -1106,6 +1260,7 @@ async function correctRehearsalRecord(cueId, field, rawValue) {
       rehearsal = fresh.rehearsal;
     } catch (_) { /* 忽略刷新失败 */ }
     renderRehearsal();
+    refreshBreakdown();
   }
 }
 

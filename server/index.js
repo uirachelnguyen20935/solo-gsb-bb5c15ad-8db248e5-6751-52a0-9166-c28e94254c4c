@@ -7,7 +7,14 @@ const { JsonStore, RehearsalStore } = require('./store');
 const { evaluate, validateCueBody, round } = require('./scheduler');
 const { buildFragment } = require('./fragment');
 const { cuesVersion, planDeferral } = require('./defer');
-const { createRehearsal, checkStart, checkEnd, checkCorrection, rehearsalView } = require('./rehearsal');
+const {
+  createRehearsal,
+  checkStart,
+  checkEnd,
+  checkCorrection,
+  rehearsalView,
+} = require('./rehearsal');
+const { buildStartBreakdown } = require('./breakdown');
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, '..', 'data', 'cues.json');
@@ -209,6 +216,14 @@ app.get('/api/fragments/download', (req, res) => {
 app.get('/api/rehearsal', (req, res) => {
   res.json({
     rehearsal: rehearsalStore.rehearsal ? rehearsalView(rehearsalStore.rehearsal) : null,
+  });
+});
+
+// 起点偏差拆解（只读）：仅由服务端基于本次冻结计划与当前登记计算，不写入任何数据
+app.get('/api/rehearsal/breakdown', (req, res) => {
+  res.json({
+    rehearsalId: rehearsalStore.rehearsal ? rehearsalStore.rehearsal.id : null,
+    breakdown: rehearsalStore.rehearsal ? buildStartBreakdown(rehearsalStore.rehearsal) : null,
   });
 });
 

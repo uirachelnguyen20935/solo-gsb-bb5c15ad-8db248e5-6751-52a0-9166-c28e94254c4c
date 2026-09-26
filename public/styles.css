@@ -291,3 +291,38 @@ tr.row-done td { color: #cfcadb; }
 .reh-legend { margin-top: 10px; }
 .reh-edit-btn { padding: 1px 6px; margin-left: 6px; font-size: 11px; }
 .reh-edit-input { width: 90px; padding: 4px 6px; font-size: 13px; margin-right: 4px; }
+
+/* ---------- 起点偏差拆解（只读） ---------- */
+.bk-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: rgba(0,0,0,.12);
+}
+.bk-title { margin: 0 0 8px; font-size: 15px; }
+.bk-legend { margin-bottom: 10px; }
+.bk-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 14px 0;
+  text-align: center;
+}
+.bk-cons { margin: 0; padding-left: 0; list-style: none; white-space: normal; min-width: 300px; }
+.bk-con { font-size: 12px; color: var(--muted); margin: 3px 0; }
+.bk-con.is-binding { color: var(--text); font-weight: 600; }
+.bk-bind-pill {
+  display: inline-block;
+  font-size: 10px;
+  padding: 0 6px;
+  margin-right: 6px;
+  border-radius: 9px;
+  background: #332a18;
+  color: var(--accent);
+  border: 1px solid #6b531f;
+}
+.bk-blockers { margin: 3px 0 0; padding-left: 18px; list-style: disc; }
+.bk-blockers li { margin: 1px 0; font-weight: 400; color: var(--text); }
+.bk-ready { color: var(--accent); }
+tr.row-bk-pending td { color: var(--muted); }
+

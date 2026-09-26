@@ -63,6 +63,34 @@
           提交时服务端基于冻结提示单与全部当前记录重新校验 —— 结束不早于开始、开始满足固定起点或前置实际结束 + 延迟、
           同通道已开始区间互不重叠（进行中视为开放区间，首尾相接允许）；任一记录失效会列出涉及提示与原因并整次拒绝。
         </p>
+
+        <section class="bk-panel">
+          <div class="panel-head">
+            <h3 class="bk-title">📐 起点偏差拆解（只读 · 服务端计算）</h3>
+          </div>
+          <p class="hint bk-legend">
+            仅使用<strong>本次冻结计划</strong>与<strong>当前登记</strong>（编辑原提示单不影响结果，也不改写计划或记录）。
+            对每个已开始提示：计划开始 <strong>P</strong>、实际开始 <strong>A</strong>；
+            起点约束为固定秒数或前置<strong>实际</strong>结束 + 延迟，通道约束为同通道其他提示中实际结束
+            <strong>不晚于 A</strong> 的最大值（没有则 0；A 之后结束的提示不计为当时阻塞）；取两者最大值 <strong>R</strong>。
+            始终成立：<strong>约束位移 (R−P) + 额外等待 (A−R) = 总偏差 (A−P)</strong>，位移可为负；
+            并列达到 R 的约束会全部列出。未开始提示标为「未分析」。
+          </p>
+          <div id="bkEmpty" class="bk-empty" hidden>尚无已开始提示，登记实际开始后这里会显示起点偏差拆解。</div>
+          <div class="table-wrap">
+            <table id="bkTable">
+              <thead>
+                <tr>
+                  <th>#</th><th>名称</th><th>独占通道</th><th>状态</th>
+                  <th>P 计划开始(s)</th><th>A 实际开始(s)</th><th>R 就绪时刻(s)</th>
+                  <th>达到 R 的约束及相关提示</th>
+                  <th>约束位移 R−P(s)</th><th>额外等待 A−R(s)</th><th>总偏差 A−P(s)</th>
+                </tr>
+              </thead>
+              <tbody id="bkTbody"></tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
 
