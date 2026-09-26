@@ -291,3 +291,20 @@ tr.row-done td { color: #cfcadb; }
 .reh-legend { margin-top: 10px; }
 .reh-edit-btn { padding: 1px 6px; margin-left: 6px; font-size: 11px; }
 .reh-edit-input { width: 90px; padding: 4px 6px; font-size: 13px; margin-right: 4px; }
+
+/* ---------- 起点偏差拆解（只读） ---------- */
+#devPanel { margin-top: 16px; }
+#devPanel > .hint { margin-bottom: 10px; }
+#devNone { margin-bottom: 0; }
+.dev-constraints {
+  margin: 0; padding-left: 0; list-style: none;
+  white-space: normal; min-width: 280px;
+}
+.dev-constraints li { margin: 3px 0; font-size: 12px; line-height: 1.5; }
+.dev-constraints .tag { margin-right: 6px; }
+.tag.dev-tag-origin { background: #2c2438; color: #d8b4fe; border-color: #5b4a86; }
+.tag.dev-tag-channel { background: #1d2e3a; color: #9fd0f5; border-color: var(--ok-edge); }
+.dev-eq {
+  margin-top: 5px; font-size: 12px; color: var(--muted);
+  white-space: normal; font-variant-numeric: tabular-nums;
+}

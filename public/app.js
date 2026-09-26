@@ -979,6 +979,7 @@ function renderRehearsal() {
     rehEditing = null;
     idle.hidden = false;
     active.hidden = true;
+    renderDeviation(); // 无排练：拆解区显示空态
     return;
   }
   idle.hidden = true;
@@ -1036,6 +1037,123 @@ function renderRehearsal() {
       }
     }
     tr.append(actTd);
+    tbody.append(tr);
+  });
+
+  renderDeviation();
+}
+
+// ---------------- 起点偏差拆解（只读，数据来自服务端 rehearsal.breakdown） ----------------
+function fmtSigned(n) {
+  if (n === null || n === undefined) return '—';
+  if (n > 1e-9) return `+${fmtNum(n)}`;
+  if (n < -1e-9) return `-${fmtNum(-n)}`;
+  return '0';
+}
+
+// 带正负着色的秒数单元格（晚=红、早=蓝、零=灰）
+function devDeltaCell(d) {
+  const td = el('td', 'num');
+  if (d === null || d === undefined) {
+    td.textContent = '—';
+    return td;
+  }
+  const span = el('span');
+  if (d > 1e-9) span.className = 'delta-late';
+  else if (d < -1e-9) span.className = 'delta-early';
+  else span.className = 'delta-zero';
+  span.textContent = `${fmtSigned(d)}s`;
+  td.append(span);
+  return td;
+}
+
+// 单条达到 R 的约束的展示文本（含相关提示）
+function devConstraintText(c) {
+  if (c.kind === 'fixed') {
+    return `固定开始第 ${fmtNum(c.value)}s`;
+  }
+  if (c.kind === 'predecessor') {
+    const name = c.cueName || `（${c.cueId}）`;
+    return `前置「${name}」实际结束 ${fmtNum(c.actualEnd)}s ＋ 延迟 ${fmtNum(c.delayAfter)}s` +
+      `（相关提示：${name}）`;
+  }
+  // channel
+  if (!c.cues || !c.cues.length) {
+    return `同通道无实际结束不晚于 A 的其他提示（计 ${fmtNum(c.value)}s）`;
+  }
+  const names = c.cues.map((x) => `「${x.name}」`).join('、');
+  return `同通道 ${names} 实际结束 ${fmtNum(c.value)}s` +
+    `（相关提示：${c.cues.map((x) => x.name).join('、')}）`;
+}
+
+function renderDeviation() {
+  const empty = $('#devEmpty');
+  const none = $('#devNone');
+  const wrap = $('#devTableWrap');
+  const tbody = $('#devTbody');
+  tbody.innerHTML = '';
+
+  const items = rehearsal && rehearsal.breakdown ? rehearsal.breakdown : null;
+  if (!items) {
+    // 无排练：空态
+    empty.hidden = false;
+    none.hidden = true;
+    wrap.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+
+  const nameOf = new Map(rehearsal.items.map((it) => [it.cueId, it.name]));
+  const analyzed = items.filter((d) => d.analyzed);
+  none.hidden = analyzed.length > 0; // 有排练但全部未开始时的提示
+  wrap.hidden = false;
+
+  items.forEach((d, i) => {
+    const tr = el('tr');
+    tr.append(el('td', 'num', String(i + 1)));
+    tr.append(el('td', 'name-cell', nameOf.get(d.cueId) || d.cueId));
+
+    if (!d.analyzed) {
+      // 未开始提示：标为未分析
+      const td = el('td');
+      td.colSpan = 7;
+      td.append(el('span', 'pill unknown', '未分析（尚未登记实际开始）'));
+      tr.append(td);
+      tbody.append(tr);
+      return;
+    }
+
+    tr.append(el('td', 'num', fmtNum(d.plannedStart)));
+    tr.append(el('td', 'num', fmtNum(d.actualStart)));
+    tr.append(el('td', 'num', fmtNum(d.releaseAt)));
+    tr.append(devDeltaCell(d.shift));
+    tr.append(devDeltaCell(d.wait));
+    tr.append(devDeltaCell(d.total));
+
+    // 达到 R 的约束（可能起点 / 通道并列）及相关提示 + 分解等式
+    const cTd = el('td');
+    const ul = el('ul', 'dev-constraints');
+    for (const c of d.constraints) {
+      const li = el('li');
+      li.append(
+        el(
+          'span',
+          c.kind === 'channel' ? 'tag dev-tag-channel' : 'tag dev-tag-origin',
+          c.kind === 'channel' ? '通道约束' : '起点约束'
+        )
+      );
+      li.append(document.createTextNode(devConstraintText(c)));
+      ul.append(li);
+    }
+    cTd.append(ul);
+    cTd.append(
+      el(
+        'div',
+        'dev-eq',
+        `分解：位移 ${fmtSigned(d.shift)}s ＋ 等待 ${fmtSigned(d.wait)}s ＝ 总偏差 ${fmtSigned(d.total)}s`
+      )
+    );
+    tr.append(cTd);
     tbody.append(tr);
   });
 }

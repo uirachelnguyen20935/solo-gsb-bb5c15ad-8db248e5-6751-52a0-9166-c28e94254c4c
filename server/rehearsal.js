@@ -18,6 +18,7 @@
 const crypto = require('crypto');
 const { round, evaluate } = require('./scheduler');
 const { cuesVersion } = require('./defer');
+const { deviationBreakdown } = require('./deviation');
 
 const EPS = 1e-9; // 与冲突检测一致的浮点容差
 
@@ -266,9 +267,13 @@ function checkCorrection(rehearsal, cueId, field, value) {
 
 /**
  * 排练视图：冻结计划 + 逐条状态（未开始 / 进行中 / 已完成）与计划-实际偏差，按计划开始时间排序。
+ * 另附只读「起点偏差拆解」breakdown（服务端基于冻结计划与当前登记实时计算）：
+ * 对已开始提示给出放行时刻 R、达到 R 的约束、约束位移 R−P、额外等待 A−R、总偏差 A−P；
+ * 未开始提示标记 analyzed:false（未分析）。
  */
 function rehearsalView(rehearsal) {
   const schedMap = new Map(rehearsal.schedule.map((s) => [s.id, s]));
+  const breakdownMap = deviationBreakdown(rehearsal);
 
   const items = rehearsal.cues.map((c) => {
     const t = schedMap.get(c.id) || { start: null, end: null };
@@ -287,6 +292,7 @@ function rehearsalView(rehearsal) {
       startDelta:
         rec.actualStart !== null && t.start !== null ? round(rec.actualStart - t.start) : null,
       endDelta: rec.actualEnd !== null && t.end !== null ? round(rec.actualEnd - t.end) : null,
+      deviation: breakdownMap.get(c.id),
     };
   });
 
@@ -300,6 +306,9 @@ function rehearsalView(rehearsal) {
   const counts = { total: items.length, done: 0, running: 0, pending: 0 };
   for (const it of items) counts[it.status] += 1;
 
+  // 拆解条目按列表同序（计划开始 → 计划结束 → 名称）
+  const breakdown = items.map((it) => it.deviation);
+
   return {
     id: rehearsal.id,
     startedAt: rehearsal.startedAt,
@@ -309,6 +318,7 @@ function rehearsalView(rehearsal) {
     records: rehearsal.records,
     items,
     counts,
+    breakdown,
   };
 }
 

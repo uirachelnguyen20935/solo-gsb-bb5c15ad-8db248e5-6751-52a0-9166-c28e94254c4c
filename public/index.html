@@ -64,6 +64,31 @@
           同通道已开始区间互不重叠（进行中视为开放区间，首尾相接允许）；任一记录失效会列出涉及提示与原因并整次拒绝。
         </p>
       </div>
+
+      <section class="frag-subpanel" id="devPanel">
+        <h3 class="frag-h3">🧭 起点偏差拆解（只读）</h3>
+        <p class="hint">
+          对每条已开始提示：约束放行 <strong>R</strong> = max（起点约束：固定秒数 / 前置实际结束＋延迟；通道约束：同通道其他提示中
+          实际结束不晚于实际开始 <strong>A</strong> 的最大值，没有则 0；A 之后才结束的不算当时阻塞）。
+          总偏差 <strong>A−P</strong> = 约束位移 <strong>R−P</strong>（可为负）＋ 额外等待 <strong>A−R</strong>；仅列出达到 R 的约束及相关提示。
+          由服务端基于本次冻结计划与当前登记实时计算，登记 / 勘误后自动刷新；不修改冻结计划与登记记录。
+        </p>
+        <div id="devEmpty" class="tl-empty">暂无进行中的排练：点击「开始排练」后，此处按条拆解实际开始的偏差来源。</div>
+        <div id="devNone" class="frag-meta" hidden>本次排练尚未登记任何实际开始，暂无可拆解的提示。</div>
+        <div class="table-wrap" id="devTableWrap" hidden>
+          <table id="devTable">
+            <thead>
+              <tr>
+                <th>#</th><th>名称</th>
+                <th>计划开始 P(s)</th><th>实际开始 A(s)</th><th>约束放行 R(s)</th>
+                <th>约束位移 R−P(s)</th><th>额外等待 A−R(s)</th><th>总偏差 A−P(s)</th>
+                <th>达到 R 的约束（相关提示）</th>
+              </tr>
+            </thead>
+            <tbody id="devTbody"></tbody>
+          </table>
+        </div>
+      </section>
     </section>
 
     <section class="panel">
